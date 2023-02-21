@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sweet ChiJin</title>
+
+    <!-- web3.js -->
+    <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+    <!-- vue.js -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+    <!-- fontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css"/>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- loader -->
+        <div class="loader-wrapper" v-show="loaderToggle">
+            <span class="loader"></span>
+        </div>
+
+        <div class="top-area">
+            <div class="project-logo">
+                <i class="fa-solid fa-hand-back-fist"></i>
+                <span> 剪刀石頭布 | paper, scissors, stone</span>
+            </div> 
+
+            <div class="eth-balance">
+                <i class="fa-brands fa-ethereum"></i>
+                <span>${{ balance }}</span>
+            </div>
+
+			<!-- swift net -->
+			<button
+				class="net-btn"
+			>
+				{{ chainName }}
+
+				<svg 
+					fill="none" 
+					height="7" 
+					width="14" 
+					xmlns="http://www.w3.org/2000/svg"
+					class="toggle-arrow"
+					@click="toggleSwiftList" 
+				>
+					<path 
+						d="M12.75 1.54001L8.51647 5.0038C7.77974 5.60658 6.72026 5.60658 5.98352 5.0038L1.75 1.54001" 
+						stroke="currentColor" 
+						stroke-linecap="round" 
+						stroke-linejoin="round" 
+						stroke-width="2.5" 
+						xmlns="http://www.w3.org/2000/svg">
+					</path>
+				</svg>
+
+				<div 
+					class="swift-box"
+					v-if="toggleNetList"
+				>
+					<span>Switch Networks</span>
+
+					<ul class="swift-list">
+						<li 
+							class="net-choice"
+							:class="{ activeChoice: chainId== 1 }"
+							@click="switchNet(1)"
+						>
+							<i class="fa-brands fa-ethereum"></i>
+							<span>Ethereum</span>
+						</li>
+
+						<li 
+							class="net-choice"
+							:class="{ activeChoice: chainId== 5 }"
+							@click="switchNet(5)"
+						>
+							<i class="fa-brands fa-ethereum"></i>
+							<span>Goerli</span>
+						</li>
+					</ul>
+				</div>
+			</button>
+
+            <button
+                class="connect-btn"
+                @click="connect"
+            >
+            	{{ connectStatus }}
+            </button>
+
+        </div>
+        <div class="play-area">
+            <div class="player-option">
+                <div class="game-description">
+                    <ul>
+                        <li>網路選擇：Goerli Testnet</li>
+                        <li>下注 / Bet：0.01 <i class="fa-brands fa-ethereum"></i></li>
+                        <li>獲勝 / Win amount：+0.02 <i class="fa-brands fa-ethereum"></i></li>
+                        <li>遊戲統計：plays:{{ playerAllResult.playCount}} win:{{ playerAllResult.win}} lose:{{ playerAllResult.lose}} tie:{{ playerAllResult.tie}}</li>
+                    </ul>
+                </div>
+
+                <!-- 點擊選擇區域 -->
+                <div class="option-area">
+                    <div
+                        @click="playGame(1)" 
+                        class="option">
+                        <i 
+                            class="fa-solid fa-hand-peace icon-size"
+                            :class="{ iconActive: playerOption==1}"
+                        >
+                        </i>
+                    </div>
+                    <div 
+                        @click="playGame(2)"     
+                        class="option"
+                    >
+                        <i 
+                            class="fa-solid fa-hand-back-fist icon-size"
+                            :class="{ iconActive: playerOption == 2}"
+                        >
+                        </i>
+                    </div>
+                    <div 
+                        @click="playGame(3)"     
+                        class="option"
+                    >
+                        <i 
+                            class="fa-solid fa-hand icon-size"
+                            :class="{ iconActive: playerOption == 3}"
+                        >
+                        </i>
+                    </div>
+                </div>
+
+                <div class="display-result-wrapper">
+                    {{ matchResult }}
+                </div>
+                
+            </div>
+            
+            <div class="result-area">
+                <div class="display-result">
+                    <i 
+                        class="fa-solid fa-hand-peace icon-size"
+                        :class="{ iconActive: oppositeOption == 'scissors'}"
+                    >
+                    </i>
+                    <i 
+                        class="fa-solid fa-hand-back-fist icon-size"
+                        :class="{ iconActive: oppositeOption == 'stone'}"
+                    >
+                    </i>
+                    <i 
+                        class="fa-solid fa-hand icon-size"
+                        :class="{ iconActive: oppositeOption == 'paper'}"
+                    >
+                    </i>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+<script type="module">
+	
+
+    if(typeof web3 !== 'undefined') {
+        web3 = new Web3(window.ethereum);
+    }else{
+        web3 = new Web3(new window.ethereum.HttpProvider("http://localhost:5500"));
+    }
+
+
+    var app = new Vue({
+        el: '#app',
+
+        data: {
+
+            playerOption:0, //我出的
+            matchResult:'', //輸贏結果
+            oppositeOption:'', //對方出的
+            loaderToggle: false,
+            playerAllResult: { playCount:0, win:0, lose:0, tie:0 },
+
+            decimal: 10**18,
+
+            connectStatus:'connect wallet',
+            coinbase:'', //錢包地址
+            balance:0, //餘額
+            toggleNetList: false,
+            chainId:5,
+
+            myContract:{},
+            contractAddress:'0x43b9dd9315c40c9ba2f246f84ef8e15aa01b0e2a',
+            contractABI: [
+                {
+                    "inputs": [],
+                    "stateMutability": "payable",
+                    "type": "constructor"
+                },
+                {
+                    "anonymous": false,
+                    "inputs": [
+                        {
+                            "indexed": false,
+                            "internalType": "uint256",
+                            "name": "matchNumber",
+                            "type": "uint256"
+                        },
+                        {
+                            "indexed": false,
+                            "internalType": "address",
+                            "name": "who",
+                            "type": "address"
+                        },
+                        {
+                            "indexed": false,
+                            "internalType": "string",
+                            "name": "option",
+                            "type": "string"
+                        },
+                        {
+                            "indexed": false,
+                            "internalType": "string",
+                            "name": "result",
+                            "type": "string"
+                        }
+                    ],
+                    "name": "gameRecord",
+                    "type": "event"
+                },
+                {
+                    "inputs": [],
+                    "name": "playScissors",
+                    "outputs": [
+                        {
+                            "internalType": "string",
+                            "name": "matchResult",
+                            "type": "string"
+                        }
+                    ],
+                    "stateMutability": "payable",
+                    "type": "function"
+                },
+                {
+                    "inputs": [],
+                    "name": "playsPapper",
+                    "outputs": [
+                        {
+                            "internalType": "string",
+                            "name": "matchResult",
+                            "type": "string"
+                        }
+                    ],
+                    "stateMutability": "payable",
+                    "type": "function"
+                },
+                {
+                    "inputs": [],
+                    "name": "playsRocks",
+                    "outputs": [
+                        {
+                            "internalType": "string",
+                            "name": "matchResult",
+                            "type": "string"
+                        }
+                    ],
+                    "stateMutability": "payable",
+                    "type": "function"
+                },
+                {
+                    "inputs": [],
+                    "name": "withDrawal",
+                    "outputs": [],
+                    "stateMutability": "nonpayable",
+                    "type": "function"
+                },
+                {
+                    "inputs": [
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        }
+                    ],
+                    "name": "allMatchRecord",
+                    "outputs": [
+                        {
+                            "internalType": "address",
+                            "name": "who",
+                            "type": "address"
+                        },
+                        {
+                            "internalType": "string",
+                            "name": "option",
+                            "type": "string"
+                        },
+                        {
+                            "internalType": "string",
+                            "name": "matchResult",
+                            "type": "string"
+                        }
+                    ],
+                    "stateMutability": "view",
+                    "type": "function"
+                },
+                {
+                    "inputs": [
+                        {
+                            "internalType": "address",
+                            "name": "checkPlayer",
+                            "type": "address"
+                        }
+                    ],
+                    "name": "checkPlayerRecord",
+                    "outputs": [
+                        {
+                            "internalType": "uint256",
+                            "name": "playRounds",
+                            "type": "uint256"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "win",
+                            "type": "uint256"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "lose",
+                            "type": "uint256"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "tie",
+                            "type": "uint256"
+                        }
+                    ],
+                    "stateMutability": "view",
+                    "type": "function"
+                },
+                {
+                    "inputs": [],
+                    "name": "getTotalRound",
+                    "outputs": [
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        }
+                    ],
+                    "stateMutability": "view",
+                    "type": "function"
+                }
+            ],
+        },
+
+		computed:{
+
+            chainName(){
+
+                if(this.chainId == 1) return "Ethereum";
+                if(this.chainId == 5) return "Goerli";
+                return "Wrong Net";
+
+            },
+		},
+
+        methods: {
+
+            connect: async function(){
+                if(window.ethereum){
+                    await window.ethereum.request({ method: "eth_requestAccounts" });
+                    this.printUserInfo();
+                    // window.web3 = new Web3(window.ethereum); 
+                }
+                else{
+                    alert("No wallet");
+                    console.log('No Wallet !')
+                }
+            },
+
+            printUserInfo: async function(){
+
+                // address
+                let userAccount = await web3.eth.getCoinbase();
+                this.coinbase = userAccount
+
+                // 餘額
+                this.balance = await web3.eth.getBalance(this.coinbase) / this.decimal;
+                this.balance = this.balance.toFixed(3);
+
+                // // 地址短寫處理
+                this.connectStatus = userAccount.slice(0, 5) + "..." + userAccount.slice(userAccount.length - 4, userAccount.length);
+
+                // // 取chainId
+                this.getChainId();
+
+            },
+
+            toggleSwiftList(){
+				this.toggleNetList = !this.toggleNetList;
+			},
+
+            getChainId: function(){
+				web3.eth.net.getId().then((id)=>{
+						this.chainId = id;
+                        
+						// Goerli才要取合約
+						if(id == 5){
+							this.getContract();
+						}
+				})
+			},
+
+            // 切net
+            switchNet: async function(targetId){
+
+                if(targetId == this.chainId){
+                    this.toggleNetList = false;
+                    return
+                }
+
+                if (window.ethereum) {
+                    try {
+                            await window.ethereum.request({
+                                method: 'wallet_switchEthereumChain',
+                                params: [{ chainId: Web3.utils.toHex(targetId) }],
+                            });
+
+                            await this.printUserInfo();
+                        }
+                    catch(err){
+                        console.log('err info', err)
+                    }
+                }
+
+                this.toggleNetList = false;
+            },
+
+            getContract: async function(){
+                // 取得合約
+                this.myContract = new web3.eth.Contract(this.contractABI, this.contractAddress);
+
+            },
+
+            playGame: async function(option){
+
+                this.resetResult();
+                this.loaderToggle = true;
+
+                // 紀錄選擇
+                this.playerOption = option;
+
+                let methodOption='';
+
+                if(option == 1){
+                    methodOption = 'playScissors'
+                }
+
+                if(option == 2){
+                    methodOption = 'playsRocks'
+                }
+
+                if(option == 3){
+                    methodOption = 'playsPapper'
+                }
+
+                try{
+                    await this.myContract.methods[methodOption]().send({ from: this.coinbase,  value: 10000000000000000 }).then((result)=>{
+
+                        let gameResult = result.events.gameRecord.returnValues[3];
+
+                        this.matchResult = gameResult;
+                        this.oppositeOption = this.checkOppositeOption(option, gameResult);
+                        this.printUserInfo(); //更新餘額;
+
+                        this.loaderToggle = false;
+
+                        this.checkAllResult();
+
+                    })
+                }
+                catch{
+                    // 取消下注
+                    this.resetResult();
+                    this.loaderToggle = false;
+                    console.log('error!!')
+                }
+
+            },
+
+            // 判斷對方出什麼
+            checkOppositeOption: function(playerOption, matchResult){
+
+                if(playerOption == 1 && matchResult == 'win') return 'paper';
+                if(playerOption == 1 && matchResult == 'lose') return 'stone';
+                if(playerOption == 1 && matchResult == 'tie') return 'scissors';
+
+                if(playerOption == 2 && matchResult == 'win') return 'scissors';
+                if(playerOption == 2 && matchResult == 'lose') return 'paper';
+                if(playerOption == 2 && matchResult == 'tie') return 'stone';
+
+                if(playerOption == 3 && matchResult == 'win') return 'stone';
+                if(playerOption == 3 && matchResult == 'lose') return 'scissors';
+                if(playerOption == 3 && matchResult == 'tie') return 'paper';
+
+            },
+
+            resetResult(){
+                // 重置結果
+                this.playerOption = 0;
+                this.matchResult = '';
+                this.oppositeOption = '';
+            },
+
+            // 查看玩家結果
+            checkAllResult(){
+
+                this.myContract.methods.checkPlayerRecord(this.coinbase).call({from: this.coinbase}, (error, result)=>{
+
+                    let { playRounds, win, lose, tie } = result;
+
+                    console.log('playerAllResult', this.playerAllResult)
+
+                    this.playerAllResult.playCount = playRounds;
+                    this.playerAllResult.win = win;
+                    this.playerAllResult.lose = lose;
+                    this.playerAllResult.tie = tie;
+
+                });
+            }
+		},
+
+        created(){
+
+            web3.eth.getCoinbase().then((result)=>{
+                // 如果有連錢包
+                if(result){
+                    this.printUserInfo();
+                }
+                else{
+                    console.log('Warning !!! please connect wallet')
+                }
+            })
+        }
+    
+    })
+    
+
+</script>
+</html>
